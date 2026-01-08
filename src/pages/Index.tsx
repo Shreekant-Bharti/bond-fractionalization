@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { YieldChart } from '@/components/YieldChart';
 import { TransactionHistory } from '@/components/TransactionHistory';
 import { UserMenu } from '@/components/UserMenu';
+import { WalletButton } from '@/components/WalletButton';
 import { useBondTransactions } from '@/hooks/useBondTransactions';
 import { useAuth } from '@/hooks/useAuth';
 import { 
@@ -22,10 +23,31 @@ const MOCK_DATA = {
 
 const Index = () => {
   const { profile } = useAuth();
+  const [isWalletConnected, setIsWalletConnected] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [tradeMode, setTradeMode] = useState<'buy' | 'sell'>('buy');
   const [amount, setAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleWalletConnect = () => {
+    const mockAddress = `0x${Math.random().toString(16).slice(2, 10)}...${Math.random().toString(16).slice(2, 6)}`;
+    setWalletAddress(mockAddress);
+    setIsWalletConnected(true);
+    toast({
+      title: "Wallet Connected",
+      description: "Successfully connected to Polygon Amoy Testnet",
+    });
+  };
+
+  const handleWalletDisconnect = () => {
+    setIsWalletConnected(false);
+    setWalletAddress(null);
+    toast({
+      title: "Wallet Disconnected",
+      description: "Your wallet has been disconnected",
+    });
+  };
 
   const { transactions, isLoading, addTransaction, clearHistory, getTotalInvested, getTotalTokens } = useBondTransactions();
 
@@ -105,6 +127,12 @@ const Index = () => {
               <TrendingUp className="w-4 h-4 text-primary" />
               <span className="text-sm font-medium text-primary">{MOCK_DATA.bondAPY}% APY</span>
             </div>
+            <WalletButton
+              isConnected={isWalletConnected}
+              address={walletAddress}
+              onConnect={handleWalletConnect}
+              onDisconnect={handleWalletDisconnect}
+            />
             <UserMenu />
           </div>
         </div>
