@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { YieldChart } from '@/components/YieldChart';
 import { TransactionHistory } from '@/components/TransactionHistory';
-import { WalletButton } from '@/components/WalletButton';
-import { useTransactionHistory } from '@/hooks/useTransactionHistory';
+import { UserMenu } from '@/components/UserMenu';
+import { useBondTransactions } from '@/hooks/useBondTransactions';
+import { useAuth } from '@/hooks/useAuth';
 import { 
   Shield, TrendingUp, Lock, Zap, Wallet, DollarSign, Percent, 
-  X, AlertCircle, CheckCircle2, ArrowRight 
+  X, AlertCircle, CheckCircle2, ArrowRight, Loader2, Sparkles
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
@@ -20,69 +21,69 @@ const MOCK_DATA = {
 };
 
 const Index = () => {
-  const [isConnected, setIsConnected] = useState(false);
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const { profile } = useAuth();
   const [showModal, setShowModal] = useState(false);
   const [tradeMode, setTradeMode] = useState<'buy' | 'sell'>('buy');
   const [amount, setAmount] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const { transactions, addTransaction, clearHistory, getTotalInvested, getTotalTokens } = useTransactionHistory();
+  const { transactions, isLoading, addTransaction, clearHistory, getTotalInvested, getTotalTokens } = useBondTransactions();
 
   const userHoldings = getTotalTokens();
   const totalInvested = getTotalInvested();
   const estimatedEarnings = totalInvested * (MOCK_DATA.bondAPY / 100) * (transactions.length > 0 ? 0.5 : 0);
 
-  const handleConnect = () => {
-    // Simulate wallet connection
-    const mockAddress = `0x${Math.random().toString(16).slice(2, 10)}...${Math.random().toString(16).slice(2, 6)}`;
-    setWalletAddress(mockAddress);
-    setIsConnected(true);
-    toast({
-      title: "Wallet Connected",
-      description: "Successfully connected to Polygon Amoy Testnet",
-    });
-  };
-
-  const handleDisconnect = () => {
-    setIsConnected(false);
-    setWalletAddress(null);
-    toast({
-      title: "Wallet Disconnected",
-      description: "Your wallet has been disconnected",
-    });
-  };
-
-  const handleTrade = () => {
+  const handleTrade = async () => {
     const parsedAmount = parseFloat(amount);
     if (!parsedAmount || parsedAmount <= 0) return;
 
+    if (tradeMode === 'sell' && parsedAmount > userHoldings) {
+      toast({
+        title: "Insufficient balance",
+        description: `You only have ${userHoldings} USTB tokens`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsProcessing(true);
 
-    // Simulate transaction processing
-    setTimeout(() => {
-      addTransaction({
-        type: tradeMode,
-        amount: parsedAmount,
-        tokens: parsedAmount, // 1:1 ratio
-        txHash: `0x${Math.random().toString(16).slice(2)}`,
-      });
+    // Simulate transaction processing delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
+    const result = await addTransaction({
+      type: tradeMode,
+      amount: parsedAmount,
+      tokens: parsedAmount, // 1:1 ratio
+      txHash: `0x${Math.random().toString(16).slice(2)}`,
+    });
+
+    setIsProcessing(false);
+
+    if (result) {
       toast({
         title: tradeMode === 'buy' ? "Purchase Successful!" : "Redemption Successful!",
         description: `${tradeMode === 'buy' ? 'Purchased' : 'Redeemed'} ${parsedAmount} USTB tokens`,
       });
-
-      setIsProcessing(false);
       setShowModal(false);
       setAmount('');
-    }, 1500);
+    }
   };
 
   const openTradeModal = (mode: 'buy' | 'sell') => {
     setTradeMode(mode);
     setShowModal(true);
   };
+
+  // Convert transactions for TransactionHistory component
+  const formattedTransactions = transactions.map(tx => ({
+    id: tx.id,
+    type: tx.type,
+    amount: tx.amount,
+    tokens: tx.tokens,
+    timestamp: new Date(tx.created_at).getTime(),
+    txHash: tx.tx_hash || undefined,
+  }));
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -104,17 +105,33 @@ const Index = () => {
               <TrendingUp className="w-4 h-4 text-primary" />
               <span className="text-sm font-medium text-primary">{MOCK_DATA.bondAPY}% APY</span>
             </div>
-            <WalletButton
-              isConnected={isConnected}
-              address={walletAddress}
-              onConnect={handleConnect}
-              onDisconnect={handleDisconnect}
-            />
+            <UserMenu />
           </div>
         </div>
       </header>
 
       <main className="pt-20 pb-12">
+        {/* Welcome Banner for new users */}
+        {!isLoading && transactions.length === 0 && (
+          <section className="container mx-auto px-4 py-4">
+            <div className="rounded-xl bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/20 p-6">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-primary/20 flex items-center justify-center flex-shrink-0">
+                  <Sparkles className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold mb-1">
+                    Welcome{profile?.name ? `, ${profile.name}` : ''}! 🎉
+                  </h2>
+                  <p className="text-muted-foreground text-sm">
+                    Start investing in tokenized treasury bonds. Buy your first bond tokens to begin earning {MOCK_DATA.bondAPY}% APY.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Hero */}
         <section className="text-center py-12 px-4">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6">
@@ -152,13 +169,13 @@ const Index = () => {
             />
             <StatsCard 
               title="Your Holdings" 
-              value={`$${userHoldings.toLocaleString()}`} 
+              value={isLoading ? '...' : `$${userHoldings.toLocaleString()}`} 
               icon={Wallet} 
-              subtitle={`${userHoldings} USTB`}
+              subtitle={isLoading ? '' : `${userHoldings} USTB`}
             />
             <StatsCard 
               title="Est. Earnings" 
-              value={`$${estimatedEarnings.toFixed(2)}`} 
+              value={isLoading ? '...' : `$${estimatedEarnings.toFixed(2)}`} 
               icon={TrendingUp}
               variant="primary"
             />
@@ -206,7 +223,7 @@ const Index = () => {
                   </Button>
                 )}
                 <p className="text-xs text-center text-muted-foreground">
-                  AAA Rated • Polygon Amoy Testnet
+                  AAA Rated • Cloud Database • Real-time Sync
                 </p>
               </div>
             </div>
@@ -215,7 +232,13 @@ const Index = () => {
 
         {/* Transaction History */}
         <section className="container mx-auto px-4 py-8 max-w-2xl">
-          <TransactionHistory transactions={transactions} onClear={clearHistory} />
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : (
+            <TransactionHistory transactions={formattedTransactions} onClear={clearHistory} />
+          )}
         </section>
 
         {/* Tech Progress Table */}
@@ -245,14 +268,19 @@ const Index = () => {
                     <td className="p-3 text-muted-foreground">Automated swap of USDT for Bond tokens</td>
                   </tr>
                   <tr className="border-t border-border">
-                    <td className="p-3">Yield Tracking</td>
+                    <td className="p-3">User Authentication</td>
                     <td className="p-3"><span className="text-primary">✅ Complete</span></td>
-                    <td className="p-3 text-muted-foreground">Recharts for dynamic earnings growth</td>
+                    <td className="p-3 text-muted-foreground">Email/Password + Google OAuth</td>
                   </tr>
                   <tr className="border-t border-border">
-                    <td className="p-3">Transaction History</td>
+                    <td className="p-3">Database Persistence</td>
                     <td className="p-3"><span className="text-primary">✅ Complete</span></td>
-                    <td className="p-3 text-muted-foreground">LocalStorage for zero-cost persistence</td>
+                    <td className="p-3 text-muted-foreground">PostgreSQL with RLS policies</td>
+                  </tr>
+                  <tr className="border-t border-border">
+                    <td className="p-3">Real-time Sync</td>
+                    <td className="p-3"><span className="text-primary">✅ Complete</span></td>
+                    <td className="p-3 text-muted-foreground">Live updates across browser tabs</td>
                   </tr>
                   <tr className="border-t border-border">
                     <td className="p-3">Network</td>
@@ -268,7 +296,7 @@ const Index = () => {
         {/* Footer */}
         <footer className="text-center py-8 text-sm text-muted-foreground border-t border-border mt-8">
           <p>© 2024 BondFi - Hackathon Demo Prototype</p>
-          <p className="text-xs mt-1">Polygon Amoy Testnet • Zero Database Costs • LocalStorage Persistence</p>
+          <p className="text-xs mt-1">Polygon Amoy Testnet • Cloud Database • Real-time Sync</p>
         </footer>
       </main>
 
@@ -297,7 +325,7 @@ const Index = () => {
                     <Wallet className="w-8 h-8 text-primary-foreground" />
                   </div>
                   <h3 className="font-semibold mb-2">Processing Transaction</h3>
-                  <p className="text-sm text-muted-foreground">Please wait...</p>
+                  <p className="text-sm text-muted-foreground">Saving to database...</p>
                 </div>
               ) : (
                 <>
@@ -356,7 +384,7 @@ const Index = () => {
 
                   <div className="flex items-start gap-2 p-3 rounded-lg bg-secondary/50 text-xs text-muted-foreground">
                     <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                    <span>Demo transaction. Stored locally in browser. No actual blockchain interaction.</span>
+                    <span>Transaction saved to cloud database with real-time sync.</span>
                   </div>
                 </>
               )}
